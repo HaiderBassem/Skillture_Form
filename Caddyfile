@@ -1,0 +1,16 @@
+# ============================================
+# Skillture — Caddy Reverse Proxy Configuration
+# Auto-obtains & renews SSL certificates via Let's Encrypt
+# ============================================
+
+# API & Form Builder Dashboard
+api.skillture.club {
+    reverse_proxy app:8080
+}
+
+# Homepage / Landing Page
+skillture.club {
+    root * /srv/homepage
+    file_server
+    try_files {path} /index.html
+}

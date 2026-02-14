@@ -1,0 +1,81 @@
+services:
+  # ========================================
+  # Caddy Reverse Proxy (SSL + Subdomain Routing)
+  # ========================================
+  caddy:
+    image: caddy:2-alpine
+    container_name: skillture-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./homepage:/srv/homepage:ro
+      - caddy_data:/data # SSL certificates
+      - caddy_config:/config # Caddy config
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - skillture-net
+
+  # ========================================
+  # PostgreSQL + pgvector Database
+  # ========================================
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: skillture-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-skillture_form}
+      POSTGRES_USER: ${POSTGRES_USER:-skillture}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_production}
+    volumes:
+      # Persistent data — survives container restarts and removals
+      - pgdata:/var/lib/postgresql/data
+      # Auto-initialize schema on first run
+      - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-skillture} -d ${POSTGRES_DB:-skillture_form}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - skillture-net
+
+  # ========================================
+  # Skillture Form Application
+  # ========================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: skillture-app
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: "8080"
+      DATABASE_URL: "postgres://${POSTGRES_USER:-skillture}:${POSTGRES_PASSWORD:-changeme_in_production}@db:5432/${POSTGRES_DB:-skillture_form}?sslmode=disable"
+      GIN_MODE: release
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - skillture-net
+
+# ========================================
+# Persistent Storage
+# ========================================
+volumes:
+  pgdata:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+
+networks:
+  skillture-net:
+    driver: bridge
